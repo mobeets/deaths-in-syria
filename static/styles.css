@@ -1,0 +1,13 @@
+@media (min-width: 30em) {
+    .row { width: 100%; display: table; table-layout: fixed; }
+    .col { display: table-cell; }
+}
+
+html {                                                                          
+    font: 24px/1.7 "Helvetica Neue", sans-serif;                                
+    text-align: center;                                                         
+}                                                                               
+                                                                                
+body {                                                                          
+    margin: 0;                                                                  
+}
