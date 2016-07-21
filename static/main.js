@@ -9,9 +9,10 @@ $( document ).ready(function() {
         // containing div
         document.getElementById("graphdiv"),
         "data/counts.csv",
+        // "data/deaths-in-syria.csv",
         {
-          // rollPeriod: 0,
-          // showRoller: true,
+          rollPeriod: 30,
+          showRoller: true,
         }
     );
     fitToContainer($('#graphdiv'), $('.canvas-parent'));
