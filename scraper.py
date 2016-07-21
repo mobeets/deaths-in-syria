@@ -1,24 +1,49 @@
-# This is a template for a Python scraper on morph.io (https://morph.io)
-# including some code snippets below that you should find helpful
+import scraperwiki
+import lxml.html
 
-# import scraperwiki
-# import lxml.html
-#
-# # Read in a page
-# html = scraperwiki.scrape("http://foo.com")
-#
-# # Find something on the page using css selectors
-# root = lxml.html.fromstring(html)
-# root.cssselect("div[align='left']")
-#
-# # Write out to the sqlite database using scraperwiki library
-# scraperwiki.sqlite.save(unique_keys=['name'], data={"name": "susan", "occupation": "software developer"})
-#
-# # An arbitrary query against the database
-# scraperwiki.sql.select("* from data where 'name'='peter'")
+URLf = lambda n: "http://www.vdc-sy.info/index.php/en/details/martyrs/{n}".format(n=n)
 
-# You don't have to do things with the ScraperWiki and lxml libraries.
-# You can use whatever libraries you want: https://morph.io/documentation/python
-# All that matters is that your final data is written to an SQLite database
-# called "data.sqlite" in the current working directory which has at least a table
-# called "data".
+def add_to_db(items):
+    scraperwiki.sqlite.save(unique_keys=['index'], data=items, table_name="data")
+
+def get_last_index():
+    scraperwiki.sqlite.execute("""CREATE TABLE IF NOT EXISTS data ("index" INTEGER)""")
+    row = scraperwiki.sql.select("""* from data order by "index" desc""")
+    return row[0]['index'] if row else 0
+
+def load_martyr_by_index(n):
+    # Read in a page
+    html = scraperwiki.scrape(URLf(n))
+    root = lxml.html.fromstring(html)
+    x = root.cssselect("table")
+    if len(x) == 0:
+        return
+    tbl = x[0]
+    items = [[elem.text for elem in row.getchildren()] for row in tbl.getchildren() if row.getchildren()]
+    items = [(item[0], item[1].strip()) for item in items if len(item) == 2 and item[1] is not None and len(item[1]) > 0]
+    obj = dict(items)
+    obj['index'] = n
+    return obj
+
+MAX_FAILS = 10
+def scrape():
+    martyrs = []
+    i = 0
+    START_INDEX = get_last_index() + 1
+    print "Starting at index {0}".format(START_INDEX)
+    j = START_INDEX
+    while i < MAX_FAILS:
+        martyr = load_martyr_by_index(j)
+        if martyr is None:
+            i += 1
+        else:
+            i = 0
+            martyrs.append(martyr)
+        j += 1
+        if j % 10 == 0 and j > START_INDEX + 1:
+            print "Up to index {0}...".format(j)
+    print "Found {0} new martyrs.".format(len(martyrs))
+    add_to_db(martyrs)
+
+if __name__ == '__main__':
+    scrape()
