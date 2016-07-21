@@ -4,6 +4,7 @@ import lxml.html
 
 today_dt = datetime.datetime.now().strftime('%Y-%m-%d')
 
+page_urlf = lambda page: "http://www.vdc-sy.info/index.php/en/martyrs/{page}/c29ydGJ5PWEua2lsbGVkX2RhdGV8c29ydGRpcj1ERVNDfGFwcHJvdmVkPXZpc2libGV8ZXh0cmFkaXNwbGF5PTB8".format(page=page)
 URLf = lambda n: "http://www.vdc-sy.info/index.php/en/details/martyrs/{n}".format(n=n)
 
 def add_to_db(items):
@@ -17,6 +18,91 @@ def get_last_index():
     init()
     row = scraperwiki.sql.select("""* from data order by "index" desc limit 1""")
     return max(row[0]['index']-1000,0) if row else 0
+
+def all_saved_indices():
+    init()
+    rows = scraperwiki.sql.select("""* from data order by "index" desc""")
+    return [row['index'] for row in rows]
+
+get_text = lambda row: [item.text.strip() for item in row]
+
+def inds_by_page(n):
+    html = scraperwiki.scrape(page_urlf(n))
+    root = lxml.html.fromstring(html)
+    x = root.cssselect("table")
+    if len(x) == 0:
+        return
+    rows = x[0]
+    keys = get_text(rows[0])
+    vals = [get_text(row) for row in rows[1:]]
+
+    has_index = lambda item: len(item) and len(item[0]) and len(item.items())
+    indices = [row[0][0].items()[0][1].split('/')[-1] if has_index(row) else None for row in rows[1:]]
+    return [int(x) for x in indices if x is not None]
+
+def all_indices(n):
+    html = scraperwiki.scrape(page_urlf(1))
+    root = lxml.html.fromstring(html)
+    last_page_num = root.cssselect('.tablePgaination')[0][-1].values()[0].split('martyrs/')[1].split('/')[0]
+    indices = []
+    for i in xrange(1, last_page_num+1):
+        indices.extent(inds_by_page(n))
+    return indices
+
+def load_all(save_every=100, print_every=20):
+    init()
+    inds = all_indices()
+    open('tmp.txt', 'w').write('\n'.join(inds))
+    items = []
+    count = 0
+    for i,ind in enumerate(inds):
+        item = load_martyr_by_index(ind)
+        if item is not None:
+            items.append(item)
+        if i % print_every == 0:
+            print '{0} of {1}'.format(i, len(inds))
+        if len(items) == save_every:
+            add_to_db(items)
+            print 'Wrote {0} new martyrs'.format(len(items))
+            count += len(items)
+            items = []
+    add_to_db(items)
+    count += len(items)
+    print 'Found {0} total martyrs'.format(count)
+
+def load_recent(save_every=100, max_overlaps=50):
+    all_inds = all_saved_indices()
+    print 'Loaded {0} existing martyrs'.format(len(all_inds))
+    i = 1
+    overlaps = 0
+    items = []
+    repeat_items = []
+    count = 0
+    while overlaps < max_overlaps:
+        print 'Parsing page {0}'.format(i)
+        inds = inds_by_page(i)
+        for ind in inds:
+            is_overlap = False
+            if ind in all_inds:
+                is_overlap = True
+                overlaps += 1
+                # continue
+            item = load_martyr_by_index(ind)
+            if item is not None:
+                if is_overlap:
+                    repeat_items.append(item)
+                    continue
+                items.append(item)
+                if len(items) == save_every:
+                    add_to_db(items)
+                    count += len(items)
+                    print 'Wrote {0} new martyrs'.format(len(items))
+                    items = []
+        i += 1
+    add_to_db(items)
+    count += len(items)
+    print 'Wrote {0} total martyrs'.format(count)
+    print 'Found {0} repeat martyrs that I will not be updating (should probably check these for updates...)'.format(len(repeat_items))
 
 def load_martyr_by_index(n):
     # Read in a page
@@ -74,4 +160,5 @@ def scrape():
     add_to_db(martyrs)
 
 if __name__ == '__main__':
-    scrape()
+    # scrape()
+    load_recent()
