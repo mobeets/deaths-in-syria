@@ -24,7 +24,47 @@ def all_saved_indices():
     rows = scraperwiki.sql.select("""* from data order by "index" desc""")
     return [row['index'] for row in rows]
 
-get_text = lambda row: [item.text.strip() for item in row]
+# get_text = lambda row: [item.text.strip() for item in row]
+get_text = lambda row: [item.text_content().strip() for item in row]
+def quick_load_by_page(n):
+    html = scraperwiki.scrape(page_urlf(n))
+    root = lxml.html.fromstring(html)
+    x = root.cssselect("table")
+    if len(x) == 0:
+        return
+    rows = x[0]
+    keys = get_text(rows[0])
+    all_vals = [get_text(row) for row in rows[1:]]
+
+    has_index = lambda item: len(item) and len(item[0]) and len(item.items())
+    indices = [row[0][0].items()[0][1].split('/')[-1] if has_index(row) else None for row in rows[1:]]
+
+    keys = ["index"] + keys
+    all_vals = [[ind] + vals for ind,vals in zip(indices, all_vals) if ind is not None]
+    items = [dict(zip(keys, vals)) for vals in all_vals]
+    return items
+
+def get_last_page_number():
+    html = scraperwiki.scrape(page_urlf(1))
+    root = lxml.html.fromstring(html)
+    num = root.cssselect('.tablePgaination')[0][-1].values()[0].split('martyrs/')[1].split('/')[0]
+    return int(num)
+
+def quick_load_all(max_repeats=150):
+    last_page_num = get_last_page_number()
+    all_inds = all_saved_indices()
+    print 'Loaded {0} existing martyrs'.format(len(all_inds))
+    repeats = 0
+    for i in xrange(1, last_page_num+1):
+        if repeats >= max_repeats:
+            break
+        print 'Parsing page {0}'.format(i)
+        items = quick_load_by_page(i)
+        old_items = items
+        items = [item for item in items if int(item['index']) not in all_inds]
+        repeats += (len(old_items) - len(items))
+        add_to_db(items)
+        print 'Wrote {0} new martyrs'.format(len(items))
 
 def inds_by_page(n):
     html = scraperwiki.scrape(page_urlf(n))
@@ -33,17 +73,12 @@ def inds_by_page(n):
     if len(x) == 0:
         return
     rows = x[0]
-    keys = get_text(rows[0])
-    vals = [get_text(row) for row in rows[1:]]
-
     has_index = lambda item: len(item) and len(item[0]) and len(item.items())
     indices = [row[0][0].items()[0][1].split('/')[-1] if has_index(row) else None for row in rows[1:]]
     return [int(x) for x in indices if x is not None]
 
-def all_indices(n):
-    html = scraperwiki.scrape(page_urlf(1))
-    root = lxml.html.fromstring(html)
-    last_page_num = root.cssselect('.tablePgaination')[0][-1].values()[0].split('martyrs/')[1].split('/')[0]
+def all_page_indices(n):
+    last_page_num = get_last_page_number()
     indices = []
     for i in xrange(1, last_page_num+1):
         indices.extent(inds_by_page(n))
@@ -51,7 +86,7 @@ def all_indices(n):
 
 def load_all(save_every=100, print_every=20):
     init()
-    inds = all_indices()
+    inds = all_page_indices()
     open('tmp.txt', 'w').write('\n'.join(inds))
     items = []
     count = 0
@@ -118,47 +153,50 @@ def load_martyr_by_index(n):
     obj['index'] = n
     return obj
 
-def dt_lt_dt(dt1, dt2, days_offset=0):
-    y1,m1,d1 = [int(x) for x in dt1.split('-')]
-    y2,m2,d2 = [int(x) for x in dt2.split('-')]
-    d2 -= max(days_offset, 1)
-    return y1 < y2 or (y1 == y2 and m1 < m2) or (y1 == y2 and m1 == m2 and d1 < d2)
+# def dt_lt_dt(dt1, dt2, days_offset=0):
+#     y1,m1,d1 = [int(x) for x in dt1.split('-')]
+#     y2,m2,d2 = [int(x) for x in dt2.split('-')]
+#     d2 -= max(days_offset, 1)
+#     return y1 < y2 or (y1 == y2 and m1 < m2) or (y1 == y2 and m1 == m2 and d1 < d2)
 
-SAVE_EVERY_N = 100
-def scrape():
-    martyrs = []
-    i = 0
-    last_dt = None
-    START_INDEX = get_last_index() + 1
-    print "Starting at index {0}".format(START_INDEX)
-    j = START_INDEX
-    total_count = 0
-    do_quit_soon = False
-    while not (do_quit_soon and martyr is None and i >= 20) and i <= 1000:
-        martyr = load_martyr_by_index(j)
-        if martyr is None:
-            if do_quit_soon:
-                i += 1
-        else:
-            if 'Date of death' in martyr:
-                last_dt = martyr['Date of death']
-                # if within 2 days of today, prepare to quit
-                if not dt_lt_dt(last_dt, today_dt, 2):
-                    do_quit_soon = True
-            i = 0
-            martyrs.append(martyr)
-        j += 1
-        if j % 10 == 0 and j > START_INDEX + 1:
-            print "Up to date {0}, index {1}...".format(last_dt, j)
-        if len(martyrs) == SAVE_EVERY_N:
-            total_count += len(martyrs)
-            add_to_db(martyrs)
-            martyrs = []
-            print "Saving checkpoint."
-    total_count += len(martyrs)
-    print "Found {0} new martyrs.".format(total_count)
-    add_to_db(martyrs)
+# SAVE_EVERY_N = 100
+# def scrape():
+#     martyrs = []
+#     i = 0
+#     last_dt = None
+#     START_INDEX = get_last_index() + 1
+#     print "Starting at index {0}".format(START_INDEX)
+#     j = START_INDEX
+#     total_count = 0
+#     do_quit_soon = False
+#     while not (do_quit_soon and martyr is None and i >= 20) and i <= 1000:
+#         martyr = load_martyr_by_index(j)
+#         if martyr is None:
+#             if do_quit_soon:
+#                 i += 1
+#         else:
+#             if 'Date of death' in martyr:
+#                 last_dt = martyr['Date of death']
+#                 # if within 2 days of today, prepare to quit
+#                 if not dt_lt_dt(last_dt, today_dt, 2):
+#                     do_quit_soon = True
+#             i = 0
+#             martyrs.append(martyr)
+#         j += 1
+#         if j % 10 == 0 and j > START_INDEX + 1:
+#             print "Up to date {0}, index {1}...".format(last_dt, j)
+#         if len(martyrs) == SAVE_EVERY_N:
+#             total_count += len(martyrs)
+#             add_to_db(martyrs)
+#             martyrs = []
+#             print "Saving checkpoint."
+#     total_count += len(martyrs)
+#     print "Found {0} new martyrs.".format(total_count)
+#     add_to_db(martyrs)
 
 if __name__ == '__main__':
     # scrape()
-    load_recent()
+
+    # load_recent()
+
+    quick_load_all()
