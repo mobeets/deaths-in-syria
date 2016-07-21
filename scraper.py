@@ -26,6 +26,7 @@ def load_martyr_by_index(n):
     return obj
 
 MAX_FAILS = 10
+SAVE_EVERY_N = 100
 def scrape():
     martyrs = []
     i = 0
@@ -42,6 +43,10 @@ def scrape():
         j += 1
         if j % 10 == 0 and j > START_INDEX + 1:
             print "Up to index {0}...".format(j)
+        if len(martyrs) == SAVE_EVERY_N:
+            add_to_db(martyrs)
+            martyrs = []
+            print "Saving checkpoint."
     print "Found {0} new martyrs.".format(len(martyrs))
     add_to_db(martyrs)
 
