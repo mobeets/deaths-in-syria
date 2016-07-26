@@ -21,7 +21,7 @@ def get_last_index():
 
 def all_saved_indices():
     init()
-    rows = scraperwiki.sql.select("""* from data order by "index" desc""")
+    rows = scraperwiki.sql.select(""" "index" from data""")
     return [row['index'] for row in rows]
 
 # get_text = lambda row: [item.text.strip() for item in row]
